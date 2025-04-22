@@ -8,16 +8,18 @@ using UriShortener.Data.Repository;
 using UriShortener.Options;
 using UriShortener.Options.Auth;
 using UriShortener.Services;
+using UriShortener.Services.Background;
 
 var builder = WebApplication.CreateBuilder(args);
+var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 var configuration = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json")
+    .AddJsonFile($"appsettings.json")
+    .AddJsonFile($"appsettings.{environment}.json")
     .Build();
 var constr = configuration.GetConnectionString("Default");
-var jwtOpts = configuration.GetSection("Jwt").Get<JwtOptions>();
 
-if (jwtOpts is null)
-    throw new Exception("Configuration Missing Crucial Data");
+builder.Services.AddOpenApi();
+builder.Services.AddControllers();
 
 // Options
 builder.Services.AddOptions<JwtOptions>()
@@ -48,12 +50,9 @@ builder.Services.AddScoped<IEMailService, EMailService>();
 
 builder.Services.AddTransient(typeof(IBaseRepository<>), typeof(BaseRepository<>));
 
-builder.Services.AddOpenApi();
-builder.Services.AddControllers();
+var jwtOpts = configuration.GetSection("Jwt").Get<JwtOptions>()!;
 builder.Services.AddDbContextPool<AppDbContext>(opts => {
     opts.UseSqlServer(constr);
-    // opts.EnableSensitiveDataLogging();
-    // opts.LogTo(Console.WriteLine, LogLevel.Trace);
 });
 builder.Services.AddAuthentication()
     .AddJwtBearer(BearerTokenDefaults.AuthenticationScheme, opts => {
@@ -69,6 +68,8 @@ builder.Services.AddAuthentication()
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddLogging(cfg => cfg.AddConsole());
+builder.Services.AddHostedService<ExpiredUriCleanupService>();
 
 var app = builder.Build();
 
